@@ -16,6 +16,8 @@ public class StockMovementDto
     public string SectorName { get; set; } = string.Empty;
     public int? FromSectorId { get; set; }
     public string? FromSectorName { get; set; }
+    public int? RequesterId { get; set; }
+    public string? RequesterName { get; set; }
     public string UserId { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 }

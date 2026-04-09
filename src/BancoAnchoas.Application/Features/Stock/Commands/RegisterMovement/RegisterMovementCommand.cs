@@ -4,6 +4,7 @@ using BancoAnchoas.Domain.Entities;
 using BancoAnchoas.Domain.Enums;
 using BancoAnchoas.Domain.Interfaces;
 using FluentValidation;
+using FluentValidation.Results;
 using MediatR;
 
 namespace BancoAnchoas.Application.Features.Stock.Commands.RegisterMovement;
@@ -13,7 +14,8 @@ public record RegisterMovementCommand(
     int SectorId,
     int Quantity,
     MovementType Type,
-    string? Notes) : IRequest<int>;
+    string? Notes,
+    int? RequesterId = null) : IRequest<int>;
 
 public class RegisterMovementCommandValidator : FluentValidation.AbstractValidator<RegisterMovementCommand>
 {
@@ -24,6 +26,10 @@ public class RegisterMovementCommandValidator : FluentValidation.AbstractValidat
         RuleFor(x => x.Quantity).GreaterThan(0);
         RuleFor(x => x.Type).Must(t => t == MovementType.Entry || t == MovementType.Exit)
             .WithMessage("Use dedicated endpoints for WriteOff, Relocation, and Adjustment.");
+
+        When(x => x.Type == MovementType.Exit, () =>
+            RuleFor(x => x.RequesterId).NotNull().GreaterThan(0)
+                .WithMessage("RequesterId is required for Exit movements."));
     }
 }
 
@@ -31,17 +37,20 @@ public class RegisterMovementCommandHandler : IRequestHandler<RegisterMovementCo
 {
     private readonly IRepository<Product> _productRepo;
     private readonly IRepository<StockMovement> _movementRepo;
+    private readonly IRepository<Requester> _requesterRepo;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUser;
 
     public RegisterMovementCommandHandler(
         IRepository<Product> productRepo,
         IRepository<StockMovement> movementRepo,
+        IRepository<Requester> requesterRepo,
         IUnitOfWork unitOfWork,
         ICurrentUserService currentUser)
     {
         _productRepo = productRepo;
         _movementRepo = movementRepo;
+        _requesterRepo = requesterRepo;
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
     }
@@ -53,7 +62,13 @@ public class RegisterMovementCommandHandler : IRequestHandler<RegisterMovementCo
 
         if (request.Type == MovementType.Exit && request.Quantity > product.Stock)
             throw new Common.Exceptions.ValidationException(
-                new[] { new FluentValidation.Results.ValidationFailure("Quantity", "Quantity exceeds available stock.") });
+                new[] { new ValidationFailure("Quantity", "Quantity exceeds available stock.") });
+
+        if (request.RequesterId.HasValue)
+        {
+            _ = await _requesterRepo.GetByIdAsync(request.RequesterId.Value, ct)
+                ?? throw new NotFoundException(nameof(Requester), request.RequesterId.Value);
+        }
 
         if (request.Type == MovementType.Entry)
             product.Stock += request.Quantity;
@@ -70,6 +85,7 @@ public class RegisterMovementCommandHandler : IRequestHandler<RegisterMovementCo
             Quantity = request.Quantity,
             Type = request.Type,
             Notes = request.Notes,
+            RequesterId = request.RequesterId,
             UserId = _currentUser.UserId ?? string.Empty
         };
 

@@ -15,10 +15,17 @@ public partial class AppDbContext
         modelBuilder.Entity<Domain.Entities.Category>().HasQueryFilter(e => e.IsActive);
         modelBuilder.Entity<Domain.Entities.Warehouse>().HasQueryFilter(e => e.IsActive);
         modelBuilder.Entity<Domain.Entities.Sector>().HasQueryFilter(e => e.IsActive);
+        modelBuilder.Entity<Domain.Entities.Requester>().HasQueryFilter(e => e.IsActive);
         // Matching filters for entities related to filtered parents
         modelBuilder.Entity<Domain.Entities.StockMovement>().HasQueryFilter(e => e.Product.IsActive);
         modelBuilder.Entity<Domain.Entities.SectorCategory>().HasQueryFilter(e => e.Category.IsActive && e.Sector.IsActive);
         modelBuilder.Entity<Domain.Entities.Notification>().HasQueryFilter(e => e.Product == null || e.Product.IsActive);
+
+        modelBuilder.Entity<Domain.Entities.StockMovement>()
+            .HasOne(m => m.Requester)
+            .WithMany(r => r.StockMovements)
+            .HasForeignKey(m => m.RequesterId)
+            .OnDelete(Microsoft.EntityFrameworkCore.DeleteBehavior.Restrict);
 
         SeedData(modelBuilder);
     }

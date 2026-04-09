@@ -16,6 +16,7 @@ public partial class AppDbContext : IdentityDbContext<AppUser>
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Order> Orders => Set<Order>();
+    public DbSet<Requester> Requesters => Set<Requester>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

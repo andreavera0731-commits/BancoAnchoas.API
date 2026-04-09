@@ -19,6 +19,13 @@ public class StockControllerTests : IntegrationTestBase
         return (await response.Content.ReadFromJsonAsync<ApiResponse<int>>())!.Data;
     }
 
+    private async Task<int> CreateRequesterAsync()
+    {
+        var response = await Client.PostAsJsonAsync("/api/requesters", new { Name = $"Req-{Guid.NewGuid():N}"[..20] });
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ApiResponse<int>>())!.Data;
+    }
+
     private async Task<(int WarehouseId, int SectorId)> CreateWarehouseAndSectorAsync()
     {
         var whResponse = await Client.PostAsJsonAsync("/api/warehouses", new { Name = $"WH-{Guid.NewGuid():N}"[..20], Location = "Test" });
@@ -77,6 +84,7 @@ public class StockControllerTests : IntegrationTestBase
         var catId = await CreateCategoryAsync();
         var (_, sectorId) = await CreateWarehouseAndSectorAsync();
         var productId = await CreateProductAsync(catId, 100);
+        var requesterId = await CreateRequesterAsync();
 
         var response = await Client.PostAsJsonAsync("/api/stock/movements", new
         {
@@ -84,7 +92,8 @@ public class StockControllerTests : IntegrationTestBase
             SectorId = sectorId,
             Quantity = 10,
             Type = MovementType.Exit,
-            Notes = "Despacho pedido"
+            Notes = "Despacho pedido",
+            RequesterId = requesterId
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -99,13 +108,15 @@ public class StockControllerTests : IntegrationTestBase
         var catId = await CreateCategoryAsync();
         var (_, sectorId) = await CreateWarehouseAndSectorAsync();
         var productId = await CreateProductAsync(catId, 5);
+        var requesterId = await CreateRequesterAsync();
 
         var response = await Client.PostAsJsonAsync("/api/stock/movements", new
         {
             ProductId = productId,
             SectorId = sectorId,
             Quantity = 999,
-            Type = MovementType.Exit
+            Type = MovementType.Exit,
+            RequesterId = requesterId
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);

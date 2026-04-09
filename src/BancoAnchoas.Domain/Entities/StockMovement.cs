@@ -20,5 +20,8 @@ public class StockMovement : BaseEntity
     public int? FromSectorId { get; set; }
     public Sector? FromSector { get; set; }
 
+    public int? RequesterId { get; set; }
+    public Requester? Requester { get; set; }
+
     public string UserId { get; set; } = string.Empty;
 }
