@@ -19,8 +19,9 @@
 9. [Módulo Sectores](#9-módulo-sectores)
 10. [Módulo Usuarios](#10-módulo-usuarios)
 11. [Módulo Notificaciones](#11-módulo-notificaciones)
-12. [Reglas de Negocio](#12-reglas-de-negocio)
-13. [Interfaces TypeScript Completas](#13-interfaces-typescript-completas)
+12. [Módulo Solicitantes (Requesters)](#12-módulo-solicitantes-requesters)
+13. [Reglas de Negocio](#13-reglas-de-negocio)
+14. [Interfaces TypeScript Completas](#14-interfaces-typescript-completas)
 
 ---
 
@@ -59,6 +60,8 @@
 | **Sectores** | PUT/DELETE | `Admin` |
 | **Usuarios** | TODOS | `Admin` |
 | **Notificaciones** | TODOS | Cualquier usuario autenticado |
+| **Solicitantes** | GET (listar/detalle) | Cualquier usuario autenticado |
+| **Solicitantes** | POST/PUT/DELETE | `Admin` |
 
 ---
 
@@ -617,7 +620,8 @@ Registra una **entrada** o **salida** de stock.
   "sectorId": 3,
   "quantity": 50,
   "type": 0,
-  "notes": "Recepción de pedido #1234"
+  "notes": "Recepción de pedido #1234",
+  "requesterId": null
 }
 ```
 
@@ -629,10 +633,11 @@ Registra una **entrada** o **salida** de stock.
 | `quantity` | Requerido, > 0 (siempre positivo) |
 | `type` | Solo `0` (Entry) o `1` (Exit). Para WriteOff/Relocation/Adjustment usar endpoints dedicados |
 | `notes` | Opcional |
+| `requesterId` | Requerido si `type` = `1` (Exit), > 0. Debe ser un solicitante activo. Ignorado para Entry |
 
 **Lógica de negocio:**
 - `Entry` (0): suma `quantity` al stock del producto
-- `Exit` (1): resta `quantity` del stock. Falla si `quantity > stock actual`
+- `Exit` (1): resta `quantity` del stock. Falla si `quantity > stock actual`. Requiere un `requesterId` válido (solicitante activo)
 
 **Response (200):**
 
@@ -776,6 +781,8 @@ Historial paginado de todos los movimientos de stock con filtros.
         "sectorName": "Sector A",
         "fromSectorId": null,
         "fromSectorName": null,
+        "requesterId": null,
+        "requesterName": null,
         "userId": "guid-string",
         "createdAt": "2026-03-20T14:22:00Z"
       }
@@ -819,6 +826,8 @@ Historial de bajas/mermas. Filtrable por razón.
       "sectorName": "Sector A",
       "fromSectorId": null,
       "fromSectorName": null,
+      "requesterId": null,
+      "requesterName": null,
       "userId": "guid-string",
       "createdAt": "2026-03-18T09:15:00Z"
     }
@@ -1225,13 +1234,130 @@ Marca **todas** las notificaciones no leídas como leídas.
 
 ---
 
-## 12. Reglas de Negocio
+## 12. Módulo Solicitantes (Requesters)
+
+Los solicitantes representan a las personas o entidades que solicitan salidas de stock. Son requeridos al registrar movimientos de tipo **Exit**.
+
+### `GET /api/requesters`
+
+Lista todos los solicitantes activos, ordenados por nombre.
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Restaurante El Faro",
+      "description": "Cliente habitual zona centro",
+      "createdAt": "2026-03-15T10:00:00Z"
+    }
+  ],
+  "message": null
+}
+```
+
+---
+
+### `GET /api/requesters/{id}`
+
+**Parámetros de ruta:** `id` (int)
+
+**Response (200):**
+
+```json
+{
+  "data": {
+    "id": 1,
+    "name": "Restaurante El Faro",
+    "description": "Cliente habitual zona centro",
+    "createdAt": "2026-03-15T10:00:00Z"
+  },
+  "message": null
+}
+```
+
+**Errores:**
+| Código | Causa |
+|--------|-------|
+| `404` | Solicitante no encontrado o inactivo |
+
+---
+
+### `POST /api/requesters` — Solo Admin
+
+**Request body:**
+
+```json
+{
+  "name": "Restaurante El Faro",
+  "description": "Cliente habitual zona centro"
+}
+```
+
+**Validaciones:**
+| Campo | Regla |
+|-------|-------|
+| `name` | Requerido, no vacío, máximo 100 caracteres |
+| `description` | Opcional |
+
+**Response (201):**
+
+```json
+{
+  "data": 1,
+  "message": null
+}
+```
+
+> Devuelve el `id` del solicitante creado.
+
+---
+
+### `PUT /api/requesters/{id}` — Solo Admin
+
+**Parámetros de ruta:** `id` (int)
+
+**Request body:**
+
+```json
+{
+  "id": 1,
+  "name": "Restaurante El Faro Actualizado",
+  "description": "Cliente preferente zona centro"
+}
+```
+
+**Validaciones:**
+| Campo | Regla |
+|-------|-------|
+| `id` | Requerido, > 0, coincide con URL |
+| `name` | Requerido, no vacío, máximo 100 caracteres |
+| `description` | Opcional |
+
+**Response:** `204 No Content`
+
+---
+
+### `DELETE /api/requesters/{id}` — Solo Admin
+
+Soft delete: desactiva el solicitante.
+
+**Parámetros de ruta:** `id` (int)
+
+**Response:** `204 No Content`
+
+---
+
+## 13. Reglas de Negocio
 
 ### Stock
 
 - El stock de un producto **nunca puede ser negativo**
 - Todos los movimientos requieren `Quantity > 0`
 - `Exit` y `WriteOff` fallan si `quantity > stock actual`
+- Los movimientos `Exit` requieren un **solicitante activo** (`requesterId`)
 - **Relocation** no modifica `Product.Stock` — solo cambia de sector
 - `Adjustment` con `Decrease` falla si `quantity > stock actual`
 
@@ -1268,9 +1394,15 @@ Marca **todas** las notificaciones no leídas como leídas.
 - Los productos se consideran **próximos a vencer** si expiran dentro de 7 días
 - Las notificaciones tienen referencia opcional al producto (`productId`)
 
+### Solicitantes
+
+- Los solicitantes identifican a quién solicita una salida de stock
+- Solo los movimientos de tipo `Exit` requieren un `requesterId`
+- Un solicitante desactivado no puede asignarse a nuevos movimientos
+
 ---
 
-## 13. Interfaces TypeScript Completas
+## 14. Interfaces TypeScript Completas
 
 A continuación se presentan todas las interfaces necesarias para implementar el frontend.
 
@@ -1477,6 +1609,8 @@ interface StockMovementDto {
   sectorName: string;
   fromSectorId: number | null;
   fromSectorName: string | null;
+  requesterId: number | null;
+  requesterName: string | null;
   userId: string;
   createdAt: string;
 }
@@ -1487,6 +1621,7 @@ interface RegisterMovementRequest {
   quantity: number;
   type: MovementType.Entry | MovementType.Exit; // Solo 0 o 1
   notes?: string | null;
+  requesterId?: number | null; // Requerido si type = Exit
 }
 
 interface RegisterWriteOffRequest {
@@ -1629,6 +1764,28 @@ interface GetNotificationsParams {
   pageNumber?: number;
   pageSize?: number;
 }
+
+// ============================================================
+// SOLICITANTES (REQUESTERS)
+// ============================================================
+
+interface RequesterDto {
+  id: number;
+  name: string;
+  description: string | null;
+  createdAt: string;
+}
+
+interface CreateRequesterRequest {
+  name: string;
+  description?: string | null;
+}
+
+interface UpdateRequesterRequest {
+  id: number;
+  name: string;
+  description?: string | null;
+}
 ```
 
 ---
@@ -1676,3 +1833,8 @@ interface GetNotificationsParams {
 | `GET` | `/api/notifications/unread-count` | Auth | No | `int` |
 | `PUT` | `/api/notifications/:id/read` | Auth | No | `204` |
 | `PUT` | `/api/notifications/read-all` | Auth | No | `204` |
+| `GET` | `/api/requesters` | Auth | No | `RequesterDto[]` |
+| `GET` | `/api/requesters/:id` | Auth | No | `RequesterDto` |
+| `POST` | `/api/requesters` | Admin | No | `int` (id) |
+| `PUT` | `/api/requesters/:id` | Admin | No | `204` |
+| `DELETE` | `/api/requesters/:id` | Admin | No | `204` |
