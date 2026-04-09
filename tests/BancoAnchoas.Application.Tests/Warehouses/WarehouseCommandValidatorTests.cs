@@ -77,6 +77,20 @@ public class WarehouseCommandValidatorTests
     }
 
     [Fact]
+    public void CreateSector_Should_Pass_WithCategories()
+    {
+        var result = _createSectorValidator.TestValidate(new CreateSectorCommand("Panadería", 1, [1, 2, 3]));
+        result.ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
+    public void CreateSector_Should_Pass_WithNullCategories()
+    {
+        var result = _createSectorValidator.TestValidate(new CreateSectorCommand("Panadería", 1, null));
+        result.ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
     public void CreateSector_Should_Fail_WhenNameIsEmpty()
     {
         var result = _createSectorValidator.TestValidate(new CreateSectorCommand("", 1));
@@ -90,6 +104,13 @@ public class WarehouseCommandValidatorTests
         result.ShouldHaveValidationErrorFor(c => c.WarehouseId);
     }
 
+    [Fact]
+    public void CreateSector_Should_Fail_WhenCategoryIdIsZero()
+    {
+        var result = _createSectorValidator.TestValidate(new CreateSectorCommand("Panadería", 1, [0]));
+        result.ShouldHaveValidationErrorFor("CategoryIds[0]");
+    }
+
     // --- UpdateSectorCommandValidator ---
 
     private readonly UpdateSectorCommandValidator _updateSectorValidator = new();
@@ -98,6 +119,27 @@ public class WarehouseCommandValidatorTests
     public void UpdateSector_Should_Pass_WithValidCommand()
     {
         var result = _updateSectorValidator.TestValidate(new UpdateSectorCommand(1, "Chocolatería"));
+        result.ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
+    public void UpdateSector_Should_Pass_WithCategories()
+    {
+        var result = _updateSectorValidator.TestValidate(new UpdateSectorCommand(1, "Chocolatería", [1, 2]));
+        result.ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
+    public void UpdateSector_Should_Pass_WithEmptyCategories()
+    {
+        var result = _updateSectorValidator.TestValidate(new UpdateSectorCommand(1, "Chocolatería", []));
+        result.ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
+    public void UpdateSector_Should_Pass_WithNullCategories()
+    {
+        var result = _updateSectorValidator.TestValidate(new UpdateSectorCommand(1, "Chocolatería", null));
         result.ShouldNotHaveAnyValidationErrors();
     }
 
@@ -113,5 +155,12 @@ public class WarehouseCommandValidatorTests
     {
         var result = _updateSectorValidator.TestValidate(new UpdateSectorCommand(1, ""));
         result.ShouldHaveValidationErrorFor(c => c.Name);
+    }
+
+    [Fact]
+    public void UpdateSector_Should_Fail_WhenCategoryIdIsZero()
+    {
+        var result = _updateSectorValidator.TestValidate(new UpdateSectorCommand(1, "Chocolatería", [0]));
+        result.ShouldHaveValidationErrorFor("CategoryIds[0]");
     }
 }

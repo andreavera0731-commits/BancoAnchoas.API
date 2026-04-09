@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using BancoAnchoas.Application.Common.Models;
 using BancoAnchoas.Application.Features.Warehouses.DTOs;
 using FluentAssertions;
@@ -28,6 +29,18 @@ public class WarehousesControllerTests : IntegrationTestBase
         {
             Name = name,
             WarehouseId = warehouseId
+        });
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<ApiResponse<int>>();
+        return body!.Data;
+    }
+
+    private async Task<int> CreateCategoryAsync(string name = "Conservas")
+    {
+        var response = await Client.PostAsJsonAsync("/api/categories", new
+        {
+            Name = name,
+            Description = "Test category"
         });
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<ApiResponse<int>>();
@@ -243,5 +256,144 @@ public class WarehousesControllerTests : IntegrationTestBase
         var response = await Client.DeleteAsync($"/api/sectors/{sectorId}");
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    // ── Sectors + Categories ────────────────────────────────────
+
+    [Fact]
+    public async Task CreateSector_WithCategories_ShouldReturn201()
+    {
+        await AuthenticateAsAdminAsync();
+        var whId = await CreateWarehouseAsync("WH-SectorCat-Create");
+        var catId1 = await CreateCategoryAsync("Cat-Sector-1");
+        var catId2 = await CreateCategoryAsync("Cat-Sector-2");
+
+        var response = await Client.PostAsJsonAsync($"/api/warehouses/{whId}/sectors", new
+        {
+            Name = "Sector con Categorías",
+            WarehouseId = whId,
+            CategoryIds = new[] { catId1, catId2 }
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var body = await response.Content.ReadFromJsonAsync<ApiResponse<int>>();
+        var sectorId = body!.Data;
+
+        var getResponse = await Client.GetAsync($"/api/sectors/{sectorId}");
+        var sectorBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var categories = sectorBody.GetProperty("data").GetProperty("categories");
+        categories.GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task CreateSector_WithoutCategories_ShouldReturn201WithEmptyCategories()
+    {
+        await AuthenticateAsAdminAsync();
+        var whId = await CreateWarehouseAsync("WH-SectorNoCat");
+
+        var response = await Client.PostAsJsonAsync($"/api/warehouses/{whId}/sectors", new
+        {
+            Name = "Sector sin Categorías",
+            WarehouseId = whId
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var body = await response.Content.ReadFromJsonAsync<ApiResponse<int>>();
+        var sectorId = body!.Data;
+
+        var getResponse = await Client.GetAsync($"/api/sectors/{sectorId}");
+        var sectorBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var categories = sectorBody.GetProperty("data").GetProperty("categories");
+        categories.GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task UpdateSector_WithCategories_ShouldReplaceCategories()
+    {
+        await AuthenticateAsAdminAsync();
+        var whId = await CreateWarehouseAsync("WH-SectorCat-Update");
+        var catId1 = await CreateCategoryAsync("Cat-UpdA");
+        var catId2 = await CreateCategoryAsync("Cat-UpdB");
+        var catId3 = await CreateCategoryAsync("Cat-UpdC");
+
+        var createResponse = await Client.PostAsJsonAsync($"/api/warehouses/{whId}/sectors", new
+        {
+            Name = "Sector-CatUpdate",
+            WarehouseId = whId,
+            CategoryIds = new[] { catId1 }
+        });
+        var sectorId = (await createResponse.Content.ReadFromJsonAsync<ApiResponse<int>>())!.Data;
+
+        var updateResponse = await Client.PutAsJsonAsync($"/api/sectors/{sectorId}", new
+        {
+            Id = sectorId,
+            Name = "Sector-CatUpdated",
+            CategoryIds = new[] { catId2, catId3 }
+        });
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var getResponse = await Client.GetAsync($"/api/sectors/{sectorId}");
+        var sectorBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var categories = sectorBody.GetProperty("data").GetProperty("categories");
+        categories.GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task UpdateSector_WithEmptyCategories_ShouldClearCategories()
+    {
+        await AuthenticateAsAdminAsync();
+        var whId = await CreateWarehouseAsync("WH-SectorCat-Clear");
+        var catId = await CreateCategoryAsync("Cat-ToClear");
+
+        var createResponse = await Client.PostAsJsonAsync($"/api/warehouses/{whId}/sectors", new
+        {
+            Name = "Sector-CatClear",
+            WarehouseId = whId,
+            CategoryIds = new[] { catId }
+        });
+        var sectorId = (await createResponse.Content.ReadFromJsonAsync<ApiResponse<int>>())!.Data;
+
+        var updateResponse = await Client.PutAsJsonAsync($"/api/sectors/{sectorId}", new
+        {
+            Id = sectorId,
+            Name = "Sector-CatCleared",
+            CategoryIds = Array.Empty<int>()
+        });
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var getResponse = await Client.GetAsync($"/api/sectors/{sectorId}");
+        var sectorBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var categories = sectorBody.GetProperty("data").GetProperty("categories");
+        categories.GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task UpdateSector_WithNullCategories_ShouldKeepExistingCategories()
+    {
+        await AuthenticateAsAdminAsync();
+        var whId = await CreateWarehouseAsync("WH-SectorCat-Null");
+        var catId = await CreateCategoryAsync("Cat-ToKeep");
+
+        var createResponse = await Client.PostAsJsonAsync($"/api/warehouses/{whId}/sectors", new
+        {
+            Name = "Sector-CatKeep",
+            WarehouseId = whId,
+            CategoryIds = new[] { catId }
+        });
+        var sectorId = (await createResponse.Content.ReadFromJsonAsync<ApiResponse<int>>())!.Data;
+
+        // Update only name, without sending categoryIds
+        var updateResponse = await Client.PutAsJsonAsync($"/api/sectors/{sectorId}", new
+        {
+            Id = sectorId,
+            Name = "Sector-Renamed"
+        });
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var getResponse = await Client.GetAsync($"/api/sectors/{sectorId}");
+        var sectorBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+        sectorBody.GetProperty("data").GetProperty("name").GetString().Should().Be("Sector-Renamed");
+        var categories = sectorBody.GetProperty("data").GetProperty("categories");
+        categories.GetArrayLength().Should().Be(1);
     }
 }

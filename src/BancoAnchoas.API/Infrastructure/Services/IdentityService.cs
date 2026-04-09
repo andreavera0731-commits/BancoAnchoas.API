@@ -16,7 +16,7 @@ public class IdentityService : IIdentityService
     public async Task<AuthResult?> AuthenticateAsync(string email, string password)
     {
         var user = await _userManager.FindByEmailAsync(email);
-        if (user is null) return null;
+        if (user is null || !user.IsActive) return null;
 
         var valid = await _userManager.CheckPasswordAsync(user, password);
         if (!valid) return null;
@@ -31,12 +31,12 @@ public class IdentityService : IIdentityService
         if (user is null) return null;
 
         var roles = await _userManager.GetRolesAsync(user);
-        return new UserResult(user.Id, user.Email!, user.Name, roles.FirstOrDefault() ?? "Almacenista", user.LockoutEnabled == false);
+        return new UserResult(user.Id, user.Email!, user.Name, roles.FirstOrDefault() ?? "Almacenista", user.IsActive);
     }
 
     public async Task<IReadOnlyList<UserResult>> GetUsersAsync()
     {
-        var users = await _userManager.Users.ToListAsync();
+        var users = await _userManager.Users.Where(u => u.IsActive).ToListAsync();
         var results = new List<UserResult>();
 
         foreach (var user in users)
@@ -45,7 +45,7 @@ public class IdentityService : IIdentityService
             results.Add(new UserResult(
                 user.Id, user.Email!, user.Name,
                 roles.FirstOrDefault() ?? "Almacenista",
-                user.LockoutEnd is null || user.LockoutEnd <= DateTimeOffset.UtcNow));
+                user.IsActive));
         }
 
         return results;
@@ -99,7 +99,8 @@ public class IdentityService : IIdentityService
         var user = await _userManager.FindByIdAsync(userId)
             ?? throw new NotFoundException("User", userId);
 
-        // Lock the user out indefinitely
-        await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+        user.IsActive = false;
+        user.DeactivatedAt = DateTime.UtcNow;
+        await _userManager.UpdateAsync(user);
     }
 }

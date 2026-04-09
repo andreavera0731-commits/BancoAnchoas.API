@@ -958,14 +958,15 @@ Obtiene los sectores de un almacén específico con sus categorías asociadas.
 
 ### `POST /api/warehouses/{id}/sectors` — Solo Admin
 
-Crea un sector dentro de un almacén.
+Crea un sector dentro de un almacén. Opcionalmente puede vincularse a categorías.
 
 **Request body:**
 
 ```json
 {
   "name": "Sector C",
-  "warehouseId": 1
+  "warehouseId": 1,
+  "categoryIds": [1, 3]
 }
 ```
 
@@ -976,6 +977,7 @@ Crea un sector dentro de un almacén.
 |-------|-------|
 | `name` | Requerido, máx 100 caracteres |
 | `warehouseId` | Requerido, > 0, coincide con URL |
+| `categoryIds` | Opcional (null o ausente = sin categorías). Si se envía, cada ID debe ser > 0 |
 
 **Response (201):** `{ "data": 5, "message": null }`
 
@@ -1014,15 +1016,22 @@ Endpoints independientes para gestionar sectores sin pasar por el almacén padre
 ```json
 {
   "id": 3,
-  "name": "Sector A - Renovado"
+  "name": "Sector A - Renovado",
+  "categoryIds": [2, 5]
 }
 ```
+
+> **Nota sobre `categoryIds`:**
+> - Si se envía un array (incluso vacío `[]`), **reemplaza** todas las categorías del sector.
+> - Si se envía `null` o se omite el campo, las categorías **no se modifican**.
+> - Para desvincular todas las categorías, enviar `"categoryIds": []`.
 
 **Validaciones:**
 | Campo | Regla |
 |-------|-------|
 | `id` | > 0, coincide con URL |
 | `name` | Requerido, máx 100 caracteres |
+| `categoryIds` | Opcional. Si se envía, cada ID debe ser > 0 |
 
 **Response:** `204 No Content`
 
@@ -1564,11 +1573,13 @@ interface SectorCategoryDto {
 interface CreateSectorRequest {
   name: string;
   warehouseId: number;
+  categoryIds?: number[] | null;
 }
 
 interface UpdateSectorRequest {
   id: number;
   name: string;
+  categoryIds?: number[] | null;
 }
 
 // ============================================================

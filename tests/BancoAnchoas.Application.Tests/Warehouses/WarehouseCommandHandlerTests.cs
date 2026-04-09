@@ -121,13 +121,41 @@ public class WarehouseCommandHandlerTests
         result.Should().Be(7);
     }
 
+    [Fact]
+    public async Task CreateSector_WithCategories_ShouldAddSectorCategories()
+    {
+        Sector? capturedSector = null;
+        _sectorRepoMock.Setup(r => r.AddAsync(It.IsAny<Sector>(), It.IsAny<CancellationToken>()))
+            .Returns<Sector, CancellationToken>((s, _) => { s.Id = 8; capturedSector = s; return Task.FromResult(s); });
+
+        var handler = new CreateSectorCommandHandler(_sectorRepoMock.Object, _uowMock.Object);
+        var result = await handler.Handle(new CreateSectorCommand("Panadería", 1, [1, 2, 3]), CancellationToken.None);
+
+        result.Should().Be(8);
+        capturedSector!.SectorCategories.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task CreateSector_WithNullCategories_ShouldHaveEmptySectorCategories()
+    {
+        Sector? capturedSector = null;
+        _sectorRepoMock.Setup(r => r.AddAsync(It.IsAny<Sector>(), It.IsAny<CancellationToken>()))
+            .Returns<Sector, CancellationToken>((s, _) => { s.Id = 9; capturedSector = s; return Task.FromResult(s); });
+
+        var handler = new CreateSectorCommandHandler(_sectorRepoMock.Object, _uowMock.Object);
+        await handler.Handle(new CreateSectorCommand("Panadería", 1, null), CancellationToken.None);
+
+        capturedSector!.SectorCategories.Should().BeEmpty();
+    }
+
     // --- UpdateSector ---
 
     [Fact]
     public async Task UpdateSector_ShouldModifyFields()
     {
         var sector = new Sector { Id = 1, Name = "Panadería", WarehouseId = 1 };
-        _sectorRepoMock.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(sector);
+        var sectors = new List<Sector> { sector }.AsQueryable();
+        _sectorRepoMock.Setup(r => r.Query()).Returns(new TestAsyncEnumerable<Sector>(sectors));
 
         var handler = new UpdateSectorCommandHandler(_sectorRepoMock.Object, _uowMock.Object);
         await handler.Handle(new UpdateSectorCommand(1, "Chocolatería"), CancellationToken.None);
@@ -136,9 +164,71 @@ public class WarehouseCommandHandlerTests
     }
 
     [Fact]
+    public async Task UpdateSector_WithCategories_ShouldReplaceSectorCategories()
+    {
+        var sector = new Sector
+        {
+            Id = 1, Name = "Panadería", WarehouseId = 1,
+            SectorCategories = new List<SectorCategory>
+            {
+                new() { SectorId = 1, CategoryId = 10 }
+            }
+        };
+        var sectors = new List<Sector> { sector }.AsQueryable();
+        _sectorRepoMock.Setup(r => r.Query()).Returns(new TestAsyncEnumerable<Sector>(sectors));
+
+        var handler = new UpdateSectorCommandHandler(_sectorRepoMock.Object, _uowMock.Object);
+        await handler.Handle(new UpdateSectorCommand(1, "Panadería", [20, 30]), CancellationToken.None);
+
+        sector.SectorCategories.Should().HaveCount(2);
+        sector.SectorCategories.Select(sc => sc.CategoryId).Should().BeEquivalentTo([20, 30]);
+    }
+
+    [Fact]
+    public async Task UpdateSector_WithEmptyCategories_ShouldClearSectorCategories()
+    {
+        var sector = new Sector
+        {
+            Id = 1, Name = "Panadería", WarehouseId = 1,
+            SectorCategories = new List<SectorCategory>
+            {
+                new() { SectorId = 1, CategoryId = 10 }
+            }
+        };
+        var sectors = new List<Sector> { sector }.AsQueryable();
+        _sectorRepoMock.Setup(r => r.Query()).Returns(new TestAsyncEnumerable<Sector>(sectors));
+
+        var handler = new UpdateSectorCommandHandler(_sectorRepoMock.Object, _uowMock.Object);
+        await handler.Handle(new UpdateSectorCommand(1, "Panadería", []), CancellationToken.None);
+
+        sector.SectorCategories.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task UpdateSector_WithNullCategories_ShouldNotModifyCategories()
+    {
+        var originalCategory = new SectorCategory { SectorId = 1, CategoryId = 10 };
+        var sector = new Sector
+        {
+            Id = 1, Name = "Panadería", WarehouseId = 1,
+            SectorCategories = new List<SectorCategory> { originalCategory }
+        };
+        var sectors = new List<Sector> { sector }.AsQueryable();
+        _sectorRepoMock.Setup(r => r.Query()).Returns(new TestAsyncEnumerable<Sector>(sectors));
+
+        var handler = new UpdateSectorCommandHandler(_sectorRepoMock.Object, _uowMock.Object);
+        await handler.Handle(new UpdateSectorCommand(1, "Renombrado", null), CancellationToken.None);
+
+        sector.Name.Should().Be("Renombrado");
+        sector.SectorCategories.Should().HaveCount(1);
+        sector.SectorCategories.First().CategoryId.Should().Be(10);
+    }
+
+    [Fact]
     public async Task UpdateSector_ShouldThrow_WhenNotFound()
     {
-        _sectorRepoMock.Setup(r => r.GetByIdAsync(999, It.IsAny<CancellationToken>())).ReturnsAsync((Sector?)null);
+        var empty = Enumerable.Empty<Sector>().AsQueryable();
+        _sectorRepoMock.Setup(r => r.Query()).Returns(new TestAsyncEnumerable<Sector>(empty));
 
         var handler = new UpdateSectorCommandHandler(_sectorRepoMock.Object, _uowMock.Object);
 
