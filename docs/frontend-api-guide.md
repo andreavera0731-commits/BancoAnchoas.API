@@ -20,8 +20,9 @@
 10. [Módulo Usuarios](#10-módulo-usuarios)
 11. [Módulo Notificaciones](#11-módulo-notificaciones)
 12. [Módulo Solicitantes (Requesters)](#12-módulo-solicitantes-requesters)
-13. [Reglas de Negocio](#13-reglas-de-negocio)
-14. [Interfaces TypeScript Completas](#14-interfaces-typescript-completas)
+13. [Módulo Reportes (Exportación)](#13-módulo-reportes-exportación)
+14. [Reglas de Negocio](#14-reglas-de-negocio)
+15. [Interfaces TypeScript Completas](#15-interfaces-typescript-completas)
 
 ---
 
@@ -62,6 +63,7 @@
 | **Notificaciones** | TODOS | Cualquier usuario autenticado |
 | **Solicitantes** | GET (listar/detalle) | Cualquier usuario autenticado |
 | **Solicitantes** | POST/PUT/DELETE | `Admin` |
+| **Reportes** | GET (exportar) | `Admin` |
 
 ---
 
@@ -214,6 +216,14 @@ Updates (`PUT`) y deletes (`DELETE`) devuelven `204 No Content` — sin body.
 | `1` | `Almacenista` |
 
 > **Nota**: En la API, los roles se envían/reciben como `string` (`"Admin"` o `"Almacenista"`), no como números.
+
+### `ReportFormat` (int)
+
+| Valor | Nombre | Descripción |
+|-------|--------|-------------|
+| `0` | `Csv` | Archivo CSV (UTF-8 con BOM) |
+| `1` | `Excel` | Archivo Excel (.xlsx) |
+| `2` | `Pdf` | Documento PDF (A4 landscape) |
 
 ### Unidades válidas para productos
 
@@ -1350,7 +1360,99 @@ Soft delete: desactiva el solicitante.
 
 ---
 
-## 13. Reglas de Negocio
+## 13. Módulo Reportes (Exportación)
+
+Permite exportar movimientos de stock en distintos formatos. **Solo Admin.**
+
+### `GET /api/reports/movements/export` — Solo Admin
+
+Exporta movimientos de stock como archivo descargable (CSV, Excel o PDF).
+
+**Query params:**
+| Param | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `productId` | int? | — | Filtrar por producto |
+| `sectorId` | int? | — | Filtrar por sector |
+| `type` | int? (MovementType) | — | Filtrar por tipo de movimiento (0-4) |
+| `requesterId` | int? | — | Filtrar por solicitante |
+| `from` | DateTime? | — | Fecha inicio (ISO 8601) |
+| `to` | DateTime? | — | Fecha fin (ISO 8601) |
+| `format` | int (ReportFormat) | `0` (Csv) | Formato de exportación: `0`=CSV, `1`=Excel, `2`=PDF |
+
+**Validaciones:**
+| Campo | Regla |
+|-------|-------|
+| `format` | Debe ser un valor válido de `ReportFormat` (0-2) |
+| `productId` | > 0 si se envía |
+| `sectorId` | > 0 si se envía |
+| `requesterId` | > 0 si se envía |
+| `type` | Debe ser un valor válido de `MovementType` (0-4) si se envía |
+| `to` | Debe ser >= `from` si ambos se envían |
+
+**Response:** Archivo binario descargable.
+
+| Formato | Content-Type | Extensión |
+|---------|-------------|-----------|
+| CSV | `text/csv` | `.csv` |
+| Excel | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `.xlsx` |
+| PDF | `application/pdf` | `.pdf` |
+
+El header `Content-Disposition` incluye el nombre del archivo con formato:
+`movimientos_YYYY-MM-DD.{csv|xlsx|pdf}`
+
+**Ejemplo de uso en frontend:**
+
+```typescript
+const params = new URLSearchParams({
+  format: '1', // Excel
+  productId: '42',
+  from: '2026-01-01',
+  to: '2026-03-31'
+});
+
+const response = await fetch(`/api/reports/movements/export?${params}`, {
+  headers: { Authorization: `Bearer ${token}` }
+});
+
+const blob = await response.blob();
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = response.headers.get('content-disposition')?.split('filename=')[1] ?? 'export';
+a.click();
+```
+
+**Límites:**
+- Máximo **100.000 filas** por exportación
+- Sin filtros devuelve los 100k movimientos más recientes
+
+**Errores posibles:**
+- `400` — Validación fallida (formato inválido, IDs <= 0, rango de fechas inválido)
+- `401` — No autenticado
+- `403` — No es Admin
+
+**Columnas incluidas en el reporte:**
+
+| # | Columna | Descripción |
+|---|---------|-------------|
+| 1 | Id | ID del movimiento |
+| 2 | Fecha | Fecha y hora (UTC) |
+| 3 | Tipo | Entry, Exit, WriteOff, Relocation, Adjustment |
+| 4 | Producto | Nombre del producto |
+| 5 | Sector | Sector destino |
+| 6 | Sector Origen | Solo para Relocation |
+| 7 | Solicitante | Solo para Exit |
+| 8 | Cantidad | Cantidad movida |
+| 9 | Tipo Ajuste | Solo para Adjustment (Increase/Decrease) |
+| 10 | Razón | Solo para WriteOff/Adjustment |
+| 11 | Notas | Notas opcionales |
+| 12 | Usuario | ID del usuario que registró |
+
+> **Nota**: El PDF muestra un subconjunto de columnas (Id, Fecha, Tipo, Producto, Sector, Solicitante, Cantidad, Notas) por limitaciones de espacio en A4.
+
+---
+
+## 14. Reglas de Negocio
 
 ### Stock
 
@@ -1400,9 +1502,17 @@ Soft delete: desactiva el solicitante.
 - Solo los movimientos de tipo `Exit` requieren un `requesterId`
 - Un solicitante desactivado no puede asignarse a nuevos movimientos
 
+### Reportes
+
+- Solo los usuarios con rol `Admin` pueden exportar reportes
+- Máximo 100.000 filas por exportación
+- Formatos disponibles: CSV, Excel (.xlsx), PDF
+- Los filtros son opcionales; sin filtros se exportan los movimientos más recientes
+- CSV incluye sanitización contra inyección de fórmulas
+
 ---
 
-## 14. Interfaces TypeScript Completas
+## 15. Interfaces TypeScript Completas
 
 A continuación se presentan todas las interfaces necesarias para implementar el frontend.
 
@@ -1786,6 +1896,27 @@ interface UpdateRequesterRequest {
   name: string;
   description?: string | null;
 }
+
+// ============================================================
+// REPORTES
+// ============================================================
+
+enum ReportFormat {
+  Csv = 0,
+  Excel = 1,
+  Pdf = 2,
+}
+
+/** Query params para GET /api/reports/movements/export */
+interface ExportMovementsParams {
+  productId?: number;
+  sectorId?: number;
+  type?: MovementType;
+  requesterId?: number;
+  from?: string; // ISO 8601
+  to?: string;   // ISO 8601
+  format?: ReportFormat; // default: Csv
+}
 ```
 
 ---
@@ -1838,3 +1969,4 @@ interface UpdateRequesterRequest {
 | `POST` | `/api/requesters` | Admin | No | `int` (id) |
 | `PUT` | `/api/requesters/:id` | Admin | No | `204` |
 | `DELETE` | `/api/requesters/:id` | Admin | No | `204` |
+| `GET` | `/api/reports/movements/export` | Admin | No | `File` (CSV/Excel/PDF) |
