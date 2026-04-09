@@ -1,5 +1,7 @@
 using BancoAnchoas.Application.Common.Behaviors;
+using BancoAnchoas.Application.Common.Interfaces;
 using BancoAnchoas.Application.Common.Mappings;
+using BancoAnchoas.Application.Common.Services;
 using FluentValidation;
 using Mapster;
 using MapsterMapper;
@@ -24,6 +26,13 @@ public static class DependencyInjection
 
         services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
         services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+
+        // Report generators (Strategy pattern)
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        services.AddSingleton<IReportGenerator, CsvReportGenerator>();
+        services.AddSingleton<IReportGenerator, ExcelReportGenerator>();
+        services.AddSingleton<IReportGenerator, PdfReportGenerator>();
+        services.AddSingleton<IReportGeneratorFactory, ReportGeneratorFactory>();
 
         return services;
     }

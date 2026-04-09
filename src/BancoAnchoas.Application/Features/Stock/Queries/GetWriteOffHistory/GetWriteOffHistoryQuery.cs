@@ -22,6 +22,7 @@ public class GetWriteOffHistoryQueryHandler : IRequestHandler<GetWriteOffHistory
             .Where(m => m.Type == MovementType.WriteOff)
             .Include(m => m.Product)
             .Include(m => m.Sector)
+            .Include(m => m.Requester)
             .AsQueryable();
 
         if (request.Reason.HasValue)
@@ -40,6 +41,8 @@ public class GetWriteOffHistoryQueryHandler : IRequestHandler<GetWriteOffHistory
                 ProductName = m.Product.Name,
                 SectorId = m.SectorId,
                 SectorName = m.Sector.Name,
+                RequesterId = m.RequesterId,
+                RequesterName = m.Requester != null ? m.Requester.Name : null,
                 UserId = m.UserId,
                 CreatedAt = m.CreatedAt
             })

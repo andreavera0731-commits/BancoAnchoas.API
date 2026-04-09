@@ -30,6 +30,7 @@ public class GetMovementHistoryQueryHandler : IRequestHandler<GetMovementHistory
             .Include(m => m.Product)
             .Include(m => m.Sector)
             .Include(m => m.FromSector)
+            .Include(m => m.Requester)
             .AsQueryable();
 
         if (request.ProductId.HasValue)
@@ -59,6 +60,8 @@ public class GetMovementHistoryQueryHandler : IRequestHandler<GetMovementHistory
             SectorName = m.Sector.Name,
             FromSectorId = m.FromSectorId,
             FromSectorName = m.FromSector != null ? m.FromSector.Name : null,
+            RequesterId = m.RequesterId,
+            RequesterName = m.Requester != null ? m.Requester.Name : null,
             UserId = m.UserId,
             CreatedAt = m.CreatedAt
         });
