@@ -33,8 +33,14 @@ artifacts/
 launchSettings.json
 !**/Properties/launchSettings.json
 
-## JetBrains Rider
-.idea/
+## JetBrains Rider (solo archivos de usuario)
+.idea/**/workspace.xml
+.idea/**/dataSources/
+.idea/**/dataSources.local.xml
+.idea/**/shelf/
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/data_source_mapping.xml
 
 ## User-specific files
 *.env
